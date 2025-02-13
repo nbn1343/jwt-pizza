@@ -200,21 +200,34 @@ test('create franchise as admin', async ({ page }) => {
 });
 
 test("view diner dashboard as diner", async ({ page }) => {
+  await page.route('*/**/api/auth', async (route) => {
+    const loginReq = { email: 'n@jwt.com', password: 'test' };
+    const loginRes = { user: { id: 2, name: 'nath', email: 'n@jwt.com', roles: [{ role: 'diner' }] }, token: 'abcdef' };
+    expect(route.request().method()).toBe('PUT');
+    await route.fulfill({ json: loginRes });
+  });
+
   await page.goto('/');
   await page.getByRole('link', { name: 'Login' }).click();
   await page.getByRole('textbox', { name: 'Email address' }).fill('t@jwt.com');
   await page.getByRole('textbox', { name: 'Password' }).click();
   await page.getByRole('textbox', { name: 'Password' }).fill('test');
   await page.getByRole('button', { name: 'Login' }).click();
-  await page.getByRole('link', { name: 'u', exact: true }).click();
+  await page.getByRole('link', { name: 'n', exact: true }).click();
   await expect(page.getByRole('heading')).toContainText('Your pizza kitchen');
-  await page.getByText('Here is your history of all').click();
+  await page.getByText('How have you lived this long without having a pizza?').click();
 
 });
 
 
 
   test("close franchise as admin", async ({ page }) => {
+    await page.route('*/**/api/auth', async (route) => {
+      const loginReq = { email: 'a@jwt.com', password: 'test' };
+      const loginRes = { user: { id: 2, name: 'Admin', email: 'a@jwt.com', roles: [{ role: 'admin' }] }, token: 'abcdef' };
+      expect(route.request().method()).toBe('PUT');
+      await route.fulfill({ json: loginRes });
+    });
     await page.route('*/**/api/franchise', async (route) => {
       const franchiseRes = [
         {
@@ -310,27 +323,63 @@ await expect(page.getByRole('main')).toContainText('The secret sauce');
 
 test("register as diner", async ({ page }) => {
 
-await page.goto('http://localhost:5173/');
-await page.getByRole('link', { name: 'Register' }).click();
-await page.getByRole('textbox', { name: 'Full name' }).fill('bob');
-await page.getByRole('textbox', { name: 'Email address' }).click();
-await page.getByRole('textbox', { name: 'Email address' }).fill('b@jwt.com');
-await page.getByRole('textbox', { name: 'Password' }).click();
-await page.getByRole('textbox', { name: 'Password' }).fill('test');
-await page.getByRole('button', { name: 'Register' }).click();
-await expect(page.getByRole('heading')).toContainText('The web\'s best pizza');
+  await page.route('*/**/api/auth', async (route) => {
+    const loginReq = { email: 'n@jwt.com', password: 'test' };
+    const loginRes = { user: { id: 2, name: 'nath', email: 'n@jwt.com', roles: [{ role: 'diner' }] }, token: 'abcdef' };
+    expect(route.request().method()).toBe('POST');
+    await route.fulfill({ json: loginRes });
+  });
+
+  await page.goto('http://localhost:5173/');
+  await page.getByRole('link', { name: 'Register' }).click();
+  await page.getByRole('textbox', { name: 'Full name' }).fill('bob');
+  await page.getByRole('textbox', { name: 'Email address' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill('b@jwt.com');
+  await page.getByRole('textbox', { name: 'Password' }).click();
+  await page.getByRole('textbox', { name: 'Password' }).fill('test');
+  await page.getByRole('button', { name: 'Register' }).click();
+  await expect(page.getByRole('heading')).toContainText("The web's best pizza");
 
 });
 
-test("logout as diner", async ({ page }) => {
+test('logout as diner', async ({ page }) => {
+  // Mock successful login
+  await page.route('*/**/api/auth', async (route) => {
+    const loginReq = { email: 't@jwt.com', password: 'test' };
+    const loginRes = {
+      user: { id: 2, name: 'user', email: 't@jwt.com', roles: [{ role: 'diner' }] },
+      token: 'mocked_token',
+    };
+    if (route.request().method() === 'PUT') {
+      expect(route.request().postDataJSON()).toMatchObject(loginReq);
+      await route.fulfill({ json: loginRes });
+    } else {
+      route.continue(); // Let other requests pass through
+    }
+  });
 
-await page.goto('http://localhost:5173/');
-await page.getByRole('link', { name: 'Login' }).click();
-await page.getByRole('textbox', { name: 'Email address' }).fill('t@jwt.com');
-await page.getByRole('textbox', { name: 'Password' }).click();
-await page.getByRole('textbox', { name: 'Password' }).fill('test');
-await page.getByRole('button', { name: 'Login' }).click();
-await page.getByRole('link', { name: 'Logout' }).click();
+  // Mock the logout API
+  await page.route('*/**/api/auth/*', async (route) => {  // Match DELETE requests to the auth endpoint with any id
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({ status: 204 }); // Successfully processed the request, no content returned
+    } else {
+      route.continue();
+    }
+  });
+
+  await page.goto('http://localhost:5173/');
+
+  // Simulate Login
+  await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill('t@jwt.com');
+  await page.getByRole('textbox', { name: 'Password' }).fill('test');
+  await page.getByRole('button', { name: 'Login' }).click();
+
+  //Wait for successful login and rerouting
+  await page.waitForURL('/')
+
+  // Simulate Logout
+  await page.getByRole('link', { name: 'Logout' }).click();
 
 });
 
